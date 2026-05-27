@@ -2,22 +2,9 @@ document.addEventListener("DOMContentLoaded", function () {
   volantis.requestAnimationFrame(() => {
     VolantisApp.init();
     VolantisApp.subscribe();
-    VolantisFancyBox.init();
+    new VolantisFancyBox();
     highlightKeyWords.startFromURL();
     locationHash();
-
-    volantis.pjax.push(() => {
-      VolantisApp.pjaxReload();
-      VolantisFancyBox.init();
-      sessionStorage.setItem("domTitle", document.title);
-      highlightKeyWords.startFromURL();
-    }, 'app.js');
-    volantis.pjax.send(() => {
-      volantis.dom.switcher.removeClass('active'); // 关闭移动端激活的搜索框
-      volantis.dom.header.removeClass('z_search-open'); // 关闭移动端激活的搜索框
-      volantis.dom.wrapper.removeClass('sub'); // 跳转页面时关闭二级导航
-      volantis.EventListener.remove() // 移除事件监听器 see: layout/_partial/scripts/global.ejs
-    }, 'app.js');
   });
 });
 
@@ -26,16 +13,10 @@ const locationHash = () => {
   if (window.location.hash) {
     let locationID = decodeURI(window.location.hash.split('#')[1]).replace(/\ /g, '-');
     let target = document.getElementById(locationID);
-    if (locationID && !target) {
-      locationID = decodeURIComponent(window.location.hash.split('#')[1]).replace(/\ /g, '-');
-      target = document.getElementById(locationID);
-    }
     if (target) {
       setTimeout(() => {
         if (window.location.hash.startsWith('#fn')) { // hexo-reference https://github.com/volantis-x/hexo-theme-volantis/issues/647
           volantis.scroll.to(target, { addTop: - volantis.dom.header.offsetHeight - 5, behavior: 'instant', observer: true })
-        } else if (window.location.hash.startsWith('#mjx')) { // mathjax
-          volantis.scroll.to(target, { addTop: - volantis.dom.header.offsetHeight - 25, behavior: 'instant', observer: true })
         } else {
           // 锚点中上半部有大片空白 高度大概是 volantis.dom.header.offsetHeight
           volantis.scroll.to(target, { addTop: 5, behavior: 'instant', observer: true })
@@ -69,7 +50,7 @@ const VolantisApp = (() => {
         fn.setHeaderSearch();
       }
     }
-    volantis.scroll.push(volantis.debounce(fn.scrollEventCallBack), "scrollEventCallBack")
+    volantis.scroll.push(fn.scrollEventCallBack, "scrollEventCallBack")
   }
 
   fn.event = () => {
@@ -356,16 +337,16 @@ const VolantisApp = (() => {
       e.stopPropagation();
       volantis.dom.header.toggleClass('z_search-open'); // 激活移动端搜索框
       volantis.dom.switcher.toggleClass('active'); // 移动端搜索按钮
-    }, false); // false : pjax 不移除监听
+    });
     // 点击空白取消激活
     volantis.dom.$(document).click(function (e) {
       volantis.dom.header.removeClass('z_search-open');
       volantis.dom.switcher.removeClass('active');
-    }, false); // false : pjax 不移除监听
+    });
     // 移动端点击搜索框 停止事件传播
     volantis.dom.search.click(function (e) {
       e.stopPropagation();
-    }, false); // false : pjax 不移除监听
+    });
   }
 
   // 设置 tabs 标签  【移动端 PC】
@@ -385,23 +366,6 @@ const VolantisApp = (() => {
           return false;
         });
       })
-    })
-  }
-
-  // mathjax 引用跳转
-  fn.mathjaxRef = () => {
-    let ref = document.querySelectorAll('mjx-container a[href]');
-    ref.forEach(function (e, i) {
-      ref[i].click = () => { }; // 强制清空原 click 事件
-      let targetID = decodeURIComponent(ref[i].getAttribute('href').split('#')[1]).replace(/\ /g, '-');
-      volantis.dom.$(e).on('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        let target = document.getElementById(targetID);
-        if (target) {
-          volantis.scroll.to(target, { addTop: - volantis.dom.header.offsetHeight - 25, behavior: 'instant' })
-        }
-      });
     })
   }
 
@@ -692,25 +656,6 @@ const VolantisApp = (() => {
       fn.setScrollAnchor();
       fn.setTabs();
       fn.footnotes();
-      fn.mathjaxRef();
-    },
-    pjaxReload: () => {
-      fn.event();
-      fn.restData();
-      fn.setHeader();
-      fn.setHeaderMenuSelection();
-      fn.setPageHeaderMenuEvent();
-      fn.setScrollAnchor();
-      fn.setTabs();
-      fn.footnotes();
-      fn.mathjaxRef();
-
-      // 移除小尾巴的移除
-      document.querySelector("#l_header .nav-main").querySelectorAll('.list-v:not(.menu-phone)').forEach(function (e) {
-        e.removeAttribute("style")
-      })
-      document.querySelector("#l_header .menu-phone.list-v").removeAttribute("style");
-      messageCopyrightShow = 0;
     },
     utilCopyCode: fn.utilCopyCode,
     utilWriteClipText: fn.utilWriteClipText,
@@ -725,120 +670,130 @@ const VolantisApp = (() => {
 Object.freeze(VolantisApp);
 
 /* FancyBox */
-const VolantisFancyBox = (() => {
-  const fn = {};
-
-  fn.loadFancyBox = (done) => {
-    volantis.css(volantis.GLOBAL_CONFIG.cdn.fancybox_css);
-    volantis.js(volantis.GLOBAL_CONFIG.cdn.fancybox_js).then(() => {
-      if (done) done();
-    })
+class VolantisFancyBox {
+  constructor(checkMain = true) {
+    this.option = {
+      Hash: false,
+      groupAll: true,
+      caption: (fancybox, slide) => slide.thumbEl?.alt || "",
+      wheel: "slide",
+      contentClick: 'iterateZoom',
+      Thumbs: {
+        showOnStart: false
+      },
+      Images: {
+        content: (_ref, slide) => {
+          const imgElement = slide.thumbEl;
+          const pictureElement = imgElement.closest('picture');
+          if (imgElement.hasAttribute('data-src')) {
+            imgElement.setAttribute('src', imgElement.getAttribute('data-src'));
+          }
+          if (pictureElement) {
+            pictureElement.classList.remove("lazy");
+            let sources = pictureElement.getElementsByTagName('source');
+            for (let source of sources) {
+              if (source.hasAttribute('data-srcset')) {
+                source.setAttribute('srcset', source.getAttribute('data-srcset'));
+              }
+            }
+            return pictureElement.outerHTML;
+          } else {
+            return imgElement.outerHTML;
+          }
+        },
+        Panzoom: {
+          maxScale: 1.5,
+          panMode: "mousemove",
+          mouseMoveFactor: 1.1,
+          mouseMoveFriction: 0.12,
+        }
+      },
+      Toolbar: {
+        display: {
+          left: ["infobar"],
+          middle: [
+            "zoomIn",
+            "zoomOut",
+            "toggle1to1",
+            "rotateCCW",
+            "rotateCW",
+            "flipX",
+            "flipY",
+          ],
+          right: ["slideshow", "download", "thumbs", "close"],
+        },
+      }
+    };
+    this.#init(checkMain);
   }
 
-  /**
-   * 加载及处理
-   * 
-   * @param {*} checkMain 是否只处理文章区域的文章
-   * @param {*} done      FancyBox 加载完成后的动作，默认执行分组绑定
-   * @returns 
-   */
-  fn.init = (checkMain = true, done = fn.groupBind) => {
+  #init(checkMain) {
     if (!document.querySelector(".md .gallery img, .fancybox") && checkMain) return;
+    this.groupBind();
+  }
+
+  async #checkFancybox(done) {
     if (typeof Fancybox === "undefined") {
-      fn.loadFancyBox(done);
+      await volantis.css(volantis.GLOBAL_CONFIG.cdn.fancybox_css);
+      await volantis.js(volantis.GLOBAL_CONFIG.cdn.fancybox_js);
+      done.call(this);
     } else {
-      done();
+      done.call(this);
     }
   }
 
-  /**
-   * 图片元素预处理
-   * 
-   * @param {*} selectors 选择器
-   * @param {*} name      分组
-   */
-  fn.elementHandling = (selectors, name) => {
-    const nodeList = document.querySelectorAll(selectors);
-    nodeList.forEach($item => {
+  #elementHandling(selectors, groupName) {
+    if (!selectors) return;
+    document.querySelectorAll(selectors).forEach($item => {
       if ($item.hasAttribute('fancybox')) return;
       $item.setAttribute('fancybox', '');
       const $link = document.createElement('a');
-      $link.setAttribute('href', $item.src);
-      $link.setAttribute('data-caption', $item.alt);
-      $link.setAttribute('data-fancybox', name);
+      $link.setAttribute('href', $item.src || $item.dataset?.src);
+      $link.setAttribute('data-caption', $item.alt || '');
+      $link.setAttribute('data-fancybox', groupName);
       $link.classList.add('fancybox');
       $link.append($item.cloneNode());
       $item.replaceWith($link);
-    })
-  }
-
-  /**
-   * 原生绑定
-   * 
-   * @param {*} selectors 选择器
-   */
-  fn.bind = (selectors) => {
-    fn.init(false, () => {
-      Fancybox.bind(selectors, {
-        groupAll: true,
-        Hash: false,
-        hideScrollbar: false,
-        Thumbs: {
-          autoStart: false,
-        },
-        caption: function (fancybox, carousel, slide) {
-          return slide.$trigger.alt || null
-        }
-      });
     });
   }
 
-  /**
-   * 分组绑定
-   * 
-   * @param {*} groupName 分组名称
-   */
-  fn.groupBind = (groupName = null) => {
-    const group = new Set();
+  bind(selectors) {
+    this.#checkFancybox(() => {
+      Fancybox?.unbind(selectors);
+      Fancybox?.bind(selectors, this.option);
+    });
+  }
 
-    document.querySelectorAll(".gallery").forEach(ele => {
-      if (ele.querySelector("img")) {
-        group.add(ele.getAttribute('data-group') || 'default');
-      }
-    })
-
-    if (!!groupName) group.add(groupName);
-
-    for (const iterator of group) {
-      Fancybox.unbind('[data-fancybox="' + iterator + '"]');
-      Fancybox.bind('[data-fancybox="' + iterator + '"]', {
-        Hash: false,
-        hideScrollbar: false,
-        Thumbs: {
-          autoStart: false,
+  groupBind(selectors, groupName = 'default') {
+    this.#checkFancybox(() => {
+      this.#elementHandling(selectors, groupName);
+      const group = new Set();
+      document.querySelectorAll('.gallery').forEach(ele => {
+        if (ele.querySelector("img")) {
+          group.add(ele.getAttribute('data-group') || 'default');
         }
       });
-    }
+      if (groupName) group.add(groupName);
+      group.forEach(name => {
+        Fancybox?.unbind(`[data-fancybox="${name}"]`);
+        Fancybox?.bind(`[data-fancybox="${name}"]`, this.option);
+      });
+    });
   }
-
-  return {
-    init: fn.init,
-    bind: fn.bind,
-    groupBind: (selectors, groupName = 'default') => {
-      try {
-        fn.elementHandling(selectors, groupName);
-        fn.init(false, () => {
-          fn.groupBind(groupName)
-        });
-      } catch (error) {
-        console.error(error)
-      }
-    }
-  }
-})()
-Object.freeze(VolantisFancyBox);
+}
 
 // highlightKeyWords 与 搜索功能搭配 https://github.com/next-theme/hexo-theme-next/blob/eb194a7258058302baf59f02d4b80b6655338b01/source/js/third-party/search/local-search.js
+// Question: 锚点稳定性未知
+// ToDo: 查找模式
+// 0. (/////////要知道浏览器自带全页面查找功能 CTRL + F)
+// 1. 右键开启查找模式 / 导航栏菜单开启?? / CTRL + F ???
+// 2. 查找模式面板 (可拖动? or 固定?)
+// 3. keyword mark id 从 0 开始编号 查找下一处 highlightKeyWords.scrollToNextHighlightKeywordMark() 查找上一处 scrollToPrevHighlightKeywordMark() 循环查找(取模%)
+// 4. 可输入修改 查找关键词 keywords(type:list)
+// 5. 区分大小写 caseSensitive (/ 全字匹配?? / 正则匹配??)
+// 6. 在选定区域中查找 querySelector ??
+// 7. 关闭查找模式
+// 8. 搜索跳转 (URL 入口) 自动开启查找模式 调用 scrollToNextHighlightKeywordMark()
 const highlightKeyWords = (() => {
   let fn = {}
   fn.markNum = 0
@@ -875,21 +830,21 @@ const highlightKeyWords = (() => {
     // Current target
     return target
   }
-  // fn.scrollToPrevHighlightKeywordMark = (id) => {
-  //   // Prev Id
-  //   let input = id || (fn.markNextId - 1 + fn.markNum) % fn.markNum;
-  //   fn.markNextId = parseInt(input)
-  //   let target = document.getElementById("keyword-mark-" + fn.markNextId);
-  //   if (!target) {
-  //     fn.markNextId = (fn.markNextId - 1 + fn.markNum) % fn.markNum;
-  //     target = document.getElementById("keyword-mark-" + fn.markNextId);
-  //   }
-  //   if (target) {
-  //     volantis.scroll.to(target, { addTop: - volantis.dom.header.offsetHeight - 5, behavior: 'instant' })
-  //   }
-  //   // Current target
-  //   return target
-  // }
+  fn.scrollToPrevHighlightKeywordMark = (id) => {
+    // Prev Id
+    let input = id || (fn.markNextId - 1 + fn.markNum) % fn.markNum;
+    fn.markNextId = parseInt(input)
+    let target = document.getElementById("keyword-mark-" + fn.markNextId);
+    if (!target) {
+      fn.markNextId = (fn.markNextId - 1 + fn.markNum) % fn.markNum;
+      target = document.getElementById("keyword-mark-" + fn.markNextId);
+    }
+    if (target) {
+      volantis.scroll.to(target, { addTop: - volantis.dom.header.offsetHeight - 5, behavior: 'instant' })
+    }
+    // Current target
+    return target
+  }
   fn.start = (keywords, querySelector) => {
     fn.markNum = 0
     if (!keywords.length || !querySelector || (keywords.length == 1 && keywords[0] == "null")) return;
@@ -997,30 +952,30 @@ const highlightKeyWords = (() => {
     mark.style["font-weight"] = "bold";
     return mark
   }
-  // fn.cleanHighlightStyle = () => {
-  //   document.querySelectorAll(".keyword").forEach(mark => {
-  //     mark.style.background = "transparent";
-  //     mark.style["border-bottom"] = null;
-  //     mark.style["color"] = null;
-  //     mark.style["font-weight"] = null;
-  //   })
-  // }
+  fn.cleanHighlightStyle = () => {
+    document.querySelectorAll(".keyword").forEach(mark => {
+      mark.style.background = "transparent";
+      mark.style["border-bottom"] = null;
+      mark.style["color"] = null;
+      mark.style["font-weight"] = null;
+    })
+  }
   return {
-    // start: (keywords, querySelector) => {
-    //   fn.start(keywords, querySelector)
-    // },
+    start: (keywords, querySelector) => {
+      fn.start(keywords, querySelector)
+    },
     startFromURL: () => {
       fn.startFromURL()
     },
-    // scrollToNextHighlightKeywordMark: (id) => {
-    //   fn.scrollToNextHighlightKeywordMark(id)
-    // },
-    // scrollToPrevHighlightKeywordMark: (id) => {
-    //   fn.scrollToPrevHighlightKeywordMark(id)
-    // },
-    // cleanHighlightStyle: () => {
-    //   fn.cleanHighlightStyle()
-    // },
+    scrollToNextHighlightKeywordMark: (id) => {
+      fn.scrollToNextHighlightKeywordMark(id)
+    },
+    scrollToPrevHighlightKeywordMark: (id) => {
+      fn.scrollToPrevHighlightKeywordMark(id)
+    },
+    cleanHighlightStyle: () => {
+      fn.cleanHighlightStyle()
+    },
   }
 })()
 Object.freeze(highlightKeyWords);
@@ -1151,46 +1106,46 @@ const DOMController = {
 }
 Object.freeze(DOMController);
 
-// const VolantisRequest = {
-//   timeoutFetch: (url, ms, requestInit) => {
-//     const controller = new AbortController()
-//     requestInit.signal?.addEventListener('abort', () => controller.abort())
-//     let promise = fetch(url, { ...requestInit, signal: controller.signal })
-//     if (ms > 0) {
-//       const timer = setTimeout(() => controller.abort(), ms)
-//       promise.finally(() => { clearTimeout(timer) })
-//     }
-//     promise = promise.catch((err) => {
-//       throw ((err || {}).name === 'AbortError') ? new Error(`Fetch timeout: ${url}`) : err
-//     })
-//     return promise
-//   },
+const VolantisRequest = {
+  timeoutFetch: (url, ms, requestInit) => {
+    const controller = new AbortController()
+    requestInit.signal?.addEventListener('abort', () => controller.abort())
+    let promise = fetch(url, { ...requestInit, signal: controller.signal })
+    if (ms > 0) {
+      const timer = setTimeout(() => controller.abort(), ms)
+      promise.finally(() => { clearTimeout(timer) })
+    }
+    promise = promise.catch((err) => {
+      throw ((err || {}).name === 'AbortError') ? new Error(`Fetch timeout: ${url}`) : err
+    })
+    return promise
+  },
 
-//   Fetch: async (url, requestInit, timeout = 15000) => {
-//     const resp = await VolantisRequest.timeoutFetch(url, timeout, requestInit);
-//     if (!resp.ok) throw new Error(`Fetch error: ${url} | ${resp.status}`);
-//     let json = await resp.json()
-//     if (!json.success) throw json
-//     return json
-//   },
+  Fetch: async (url, requestInit, timeout = 15000) => {
+    const resp = await VolantisRequest.timeoutFetch(url, timeout, requestInit);
+    if (!resp.ok) throw new Error(`Fetch error: ${url} | ${resp.status}`);
+    let json = await resp.json()
+    if (!json.success) throw json
+    return json
+  },
 
-//   POST: async (url, data) => {
-//     const requestInit = {
-//       method: 'POST',
-//     }
-//     if (data) {
-//       const formData = new FormData();
-//       Object.keys(data).forEach(key => formData.append(key, String(data[key])))
-//       requestInit.body = formData;
-//     }
-//     const json = await VolantisRequest.Fetch(url, requestInit)
-//     return json.data;
-//   },
+  POST: async (url, data) => {
+    const requestInit = {
+      method: 'POST',
+    }
+    if (data) {
+      const formData = new FormData();
+      Object.keys(data).forEach(key => formData.append(key, String(data[key])))
+      requestInit.body = formData;
+    }
+    const json = await VolantisRequest.Fetch(url, requestInit)
+    return json.data;
+  },
 
-//   Get: async (url, data) => {
-//     const json = await VolantisRequest.Fetch(url + (data ? (`?${new URLSearchParams(data)}`) : ''), {
-//       method: 'GET'
-//     })
-//   }
-// }
-// Object.freeze(VolantisRequest);
+  Get: async (url, data) => {
+    const json = await VolantisRequest.Fetch(url + (data ? (`?${new URLSearchParams(data)}`) : ''), {
+      method: 'GET'
+    })
+  }
+}
+Object.freeze(VolantisRequest);
